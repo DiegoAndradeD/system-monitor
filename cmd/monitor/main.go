@@ -6,18 +6,18 @@ import (
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
+const (
+	ScreenWidth  = 800
+	ScreenHeight = 600
+)
+
 func main() {
 
 	monitor := metrics.NewMonitor()
 	monitor.Start()
 	defer monitor.Stop()
 
-	const (
-		screenWidth  = 800
-		screenHeight = 600
-	)
-
-	rl.InitWindow(screenWidth, screenHeight, "Go System Monitor")
+	rl.InitWindow(ScreenWidth, ScreenHeight, "Go System Monitor")
 	defer rl.CloseWindow()
 	rl.SetTargetFPS(60)
 
