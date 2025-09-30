@@ -7,13 +7,17 @@ import (
 	"golang.org/x/exp/slices"
 )
 
+type DiskMetrics struct {
+	Usage float64
+}
+
 var nonPhysicalPartitionsTypes = []string{"tmpfs", "overlay", "proc", "sysfs", "cgroup", "squashfs", "devtmpfs", "vfat"}
 
-func GetDiskUsage() float64 {
+func GetDiskMetrics() DiskMetrics {
 	partitions, err := disk.Partitions(false)
 	if err != nil {
 		log.Printf("Error getting disk partitions: %v", err)
-		return 0
+		return DiskMetrics{Usage: 0}
 	}
 
 	var totalUsed uint64 = 0
@@ -35,8 +39,8 @@ func GetDiskUsage() float64 {
 	}
 
 	if totalSize == 0 {
-		return 0
+		return DiskMetrics{Usage: 0}
 	}
 
-	return (float64(totalUsed) / float64(totalSize)) * 100
+	return DiskMetrics{Usage: (float64(totalUsed) / float64(totalSize)) * 100}
 }

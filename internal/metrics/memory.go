@@ -6,11 +6,15 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
-func GetMemoryPercentage() float64 {
+type MemoryMetrics struct {
+	Usage float64
+}
+
+func GetMemoryMetrics() MemoryMetrics {
 	virtualMemory, err := mem.VirtualMemory()
 	if err != nil {
 		log.Printf("Error getting virtual memory stats: %v", err)
-		return 0
+		return MemoryMetrics{Usage: 0}
 	}
-	return virtualMemory.UsedPercent
+	return MemoryMetrics{Usage: virtualMemory.UsedPercent}
 }

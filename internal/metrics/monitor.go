@@ -7,9 +7,9 @@ import (
 )
 
 type SystemMetrics struct {
-	CPUUsage      float64
-	MemoryUsage   float64
-	MainDiskUsage float64
+	CPUMetrics    CPUMetrics
+	MemoryUsage   MemoryMetrics
+	MainDiskUsage DiskMetrics
 }
 
 type Monitor struct {
@@ -34,16 +34,15 @@ func (m *Monitor) GetMetrics() SystemMetrics {
 }
 
 func (m *Monitor) Start() {
-	go m.collectorRoutine(GetCPUPercentage, m.updateCPUUsage)
-	go m.collectorRoutine(GetMemoryPercentage, m.updateMemoryUsage)
-	go m.collectorRoutine(GetDiskUsage, m.updateMainDiskUsage)
+	go collectorRoutine(m, GetCPUMetrics, m.updateCPUMetrics)
+	go collectorRoutine(m, GetMemoryMetrics, m.updateMemoryUsage)
+	go collectorRoutine(m, GetDiskMetrics, m.updateMainDiskUsage)
 }
-
 func (m *Monitor) Stop() {
 	m.cancel()
 }
 
-func (m *Monitor) collectorRoutine(getData func() float64, updateData func(float64)) {
+func collectorRoutine[T any](m *Monitor, getData func() T, updateData func(T)) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
@@ -59,20 +58,20 @@ func (m *Monitor) collectorRoutine(getData func() float64, updateData func(float
 	}
 }
 
-func (m *Monitor) updateCPUUsage(usage float64) {
+func (m *Monitor) updateCPUMetrics(metrics CPUMetrics) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.metrics.CPUUsage = usage
+	m.metrics.CPUMetrics = CPUMetrics{Usage: metrics.Usage, Frequency: metrics.Frequency}
 }
 
-func (m *Monitor) updateMemoryUsage(usage float64) {
+func (m *Monitor) updateMemoryUsage(metrics MemoryMetrics) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.metrics.MemoryUsage = usage
+	m.metrics.MemoryUsage = MemoryMetrics{Usage: metrics.Usage}
 }
 
-func (m *Monitor) updateMainDiskUsage(usage float64) {
+func (m *Monitor) updateMainDiskUsage(metrics DiskMetrics) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.metrics.MainDiskUsage = usage
+	m.metrics.MainDiskUsage = DiskMetrics{Usage: metrics.Usage}
 }
