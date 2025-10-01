@@ -1,15 +1,42 @@
 package ui
 
 import (
-	"fmt"
-
 	"github.com/DiegoAndradeD/system-monitor/internal/metrics"
+	"github.com/DiegoAndradeD/system-monitor/utils"
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
+const (
+	ScreenPadding = 10
+	TitleFontSize = 40
+	TitleOffsetY  = 10
+	MetricsStartY = 80
+
+	SectionRectWidthRatio = 0.9
+	SectionPadding        = 20
+	SectionTitleFontSize  = 25
+	SectionTitleOffsetY   = 20
+	SectionMetricsStartY  = 60
+
+	MetricFontSize   = 20
+	MetricLineHeight = 30
+	MetricLabelWidth = 125
+	MetricValueWidth = 400
+
+	BarCount   = 50
+	BarWidth   = 8
+	BarHeight  = 16
+	BarGap     = 2
+	BarOffsetX = 300
+)
+
+type MetricValue interface {
+	Format(unit string) string
+}
+
 type MetricDisplay struct {
 	Label string
-	Value float64
+	Value MetricValue
 	Unit  string
 }
 
@@ -19,79 +46,154 @@ type MetricsSection struct {
 	Metrics []MetricDisplay
 }
 
-func Render(metrics metrics.SystemMetrics) {
+func Render(sections []MetricsSection) {
 	rl.BeginDrawing()
+	defer rl.EndDrawing()
+
 	rl.ClearBackground(rl.Black)
 
-	rl.DrawText("System Monitor", 10, 10, 40, rl.LightGray)
+	yOffset := MetricsStartY
+	for _, section := range sections {
+		height := drawMetricsSection(section, float32(yOffset))
+		yOffset += int(height) + SectionPadding
+	}
+}
 
-	yOffset := 80
-
-	cpuSection := MetricsSection{
+func CreateCPUSection(cpuMetrics metrics.CPUMetrics) MetricsSection {
+	return MetricsSection{
 		Title: "CPU",
 		Color: rl.SkyBlue,
 		Metrics: []MetricDisplay{
-			{Label: "Usage", Value: metrics.CPUMetrics.Usage, Unit: "%"},
-			{Label: "Frequency", Value: metrics.CPUMetrics.Frequency, Unit: "MHz"},
+			{Label: "", Value: utils.PercentageValue(cpuMetrics.Usage), Unit: "%"},
+			{Label: "Frequency", Value: utils.SingleValue(cpuMetrics.Frequency), Unit: "MHz"},
 		},
 	}
-
-	DrawMetricsSection(cpuSection, float32(yOffset))
-
-	rl.EndDrawing()
 }
 
-func DrawPercentageBars(percent float64, x, y float32) {
-	const (
-		totalBars = 50
-		barWidth  = 10
-		barHeight = 20
-		gap       = 2
-	)
+func CreateMemorySection(memMetrics metrics.MemoryMetrics) MetricsSection {
+	return MetricsSection{
+		Title: "Memory",
+		Color: rl.Green,
+		Metrics: []MetricDisplay{
+			{Label: "", Value: utils.PercentageValue(memMetrics.Usage), Unit: "%"},
+			{Label: "Used", Value: utils.DualValue{Used: memMetrics.TotalUsed, Available: memMetrics.TotalAvailable}, Unit: "GB"},
+			{Label: "Swap", Value: utils.DualValue{Used: memMetrics.SwapMemoryUsed, Available: memMetrics.SwapMemoryTotal}, Unit: "GB"},
+		},
+	}
+}
 
-	filledBars := int(percent / 100 * totalBars)
+func CreateDiskSection(diskMetrics metrics.DiskMetrics) MetricsSection {
+	return MetricsSection{
+		Title: "Disk",
+		Color: rl.Orange,
+		Metrics: []MetricDisplay{
+			{
+				Label: "",
+				Value: utils.PercentageValue(diskMetrics.Usage),
+				Unit:  "%",
+			},
+			{
+				Label: "Used",
+				Value: utils.DualValue{
+					Used:      diskMetrics.TotalUsed / (1024 * 1024 * 1024),
+					Available: diskMetrics.TotalSize / (1024 * 1024 * 1024),
+				},
+				Unit: "GB",
+			},
+		},
+	}
+}
 
-	for i := range totalBars {
-		color := rl.DarkGray
+func CreateNetworkSection(netMetrics metrics.NetworkMetrics) MetricsSection {
+	return MetricsSection{
+		Title: "Network",
+		Color: rl.Violet,
+		Metrics: []MetricDisplay{
+			{Label: "Upload", Value: utils.SingleValue(netMetrics.UploadSpeedKBps), Unit: "KB/s"},
+			{Label: "Download", Value: utils.SingleValue(netMetrics.DownloadSpeedKBps), Unit: "KB/s"},
+			{Label: "Total Sent", Value: utils.SingleValue(netMetrics.TotalSentGB), Unit: "GB"},
+			{Label: "Total Recv", Value: utils.SingleValue(netMetrics.TotalRecvGB), Unit: "GB"},
+		},
+	}
+}
+
+func drawPercentageBars(percent float64, x, y float32, color rl.Color) {
+	filledBars := int(percent / 100.0 * BarCount)
+
+	for i := range BarCount {
+		barColor := rl.DarkGray
 		if i < filledBars {
-			color = rl.SkyBlue
+			barColor = color
 		}
-		rl.DrawRectangle(
-			int32(x)+int32(i*(barWidth+gap)),
-			int32(y),
-			int32(barWidth),
-			int32(barHeight),
-			color,
-		)
+
+		barX := int32(x) + int32(i*(BarWidth+BarGap))
+		rl.DrawRectangle(barX, int32(y), BarWidth, BarHeight, barColor)
 	}
 }
 
-func DrawMetricsSection(section MetricsSection, yPosition float32) {
+func drawMetricsSection(section MetricsSection, yPosition float32) float32 {
 	screenW := float32(rl.GetScreenWidth())
+	rectWidth := screenW * SectionRectWidthRatio
+	rectX := (screenW - rectWidth) / 2
 
-	const (
-		rectWidthRatio = 0.9
-		padding        = 20
-		fontSize       = 20
-		lineHeight     = 60
+	sectionHeight := SectionMetricsStartY + float32(len(section.Metrics))*MetricLineHeight + SectionPadding
+
+	rl.DrawRectangleLines(
+		int32(rectX),
+		int32(yPosition),
+		int32(rectWidth),
+		int32(sectionHeight),
+		rl.Gray,
 	)
 
-	rectWidth := screenW * rectWidthRatio
-	rectX := (screenW - rectWidth) / 2
-	rectHeight := float32(len(section.Metrics)*int(lineHeight) + 80)
+	rl.DrawText(
+		section.Title,
+		int32(rectX)+SectionPadding,
+		int32(yPosition)+SectionTitleOffsetY,
+		SectionTitleFontSize,
+		rl.White,
+	)
 
-	rl.DrawRectangleLines(int32(rectX), int32(yPosition), int32(rectWidth), int32(rectHeight), rl.Gray)
-	rl.DrawText(section.Title, int32(rectX)+padding, int32(yPosition)+padding, fontSize+5, section.Color)
-	currentY := yPosition + padding + 40
+	currentY := yPosition + SectionMetricsStartY
 	for _, metric := range section.Metrics {
-		DrawPercentageBars(metric.Value, rectX+padding+300, currentY)
-
-		labelText := metric.Label + ":"
-		rl.DrawText(labelText, int32(rectX)+padding, int32(currentY), fontSize, rl.White)
-
-		valueText := fmt.Sprintf("%.2f %s", metric.Value, metric.Unit)
-		rl.DrawText(valueText, int32(rectX)+padding+150, int32(currentY), fontSize, rl.LightGray)
-
-		currentY += lineHeight
+		drawMetric(metric, section.Color, rectX, currentY)
+		currentY += MetricLineHeight
 	}
+
+	return sectionHeight
+}
+
+func drawMetric(metric MetricDisplay, sectionColor rl.Color, rectX, y float32) {
+	baseX := int32(rectX) + SectionPadding
+	var valuePadding int32 = 0
+
+	if percentageValue, ok := metric.Value.(utils.PercentageValue); ok {
+		drawPercentageBars(float64(percentageValue), rectX+SectionPadding, y, sectionColor)
+		valuePadding = 100
+	}
+
+	labelX := baseX
+	valueX := baseX + MetricLabelWidth
+
+	if _, ok := metric.Value.(utils.PercentageValue); ok {
+		labelX += BarOffsetX
+		valueX += BarOffsetX
+	}
+
+	if metric.Label != "" {
+		rl.DrawText(metric.Label+":", labelX, int32(y), MetricFontSize, rl.White)
+	}
+
+	valueText := metric.Value.Format(metric.Unit)
+	rl.DrawText(valueText, valueX+valuePadding, int32(y), MetricFontSize, rl.LightGray)
+}
+
+func RenderSystemMetrics(m metrics.SystemMetrics) {
+	sections := []MetricsSection{
+		CreateCPUSection(m.CPUMetrics),
+		CreateMemorySection(m.MemoryMetrics),
+		CreateDiskSection(m.DiskMetrics),
+		CreateNetworkSection(m.NetworkMetrics),
+	}
+	Render(sections)
 }

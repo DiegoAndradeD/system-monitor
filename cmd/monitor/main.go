@@ -8,20 +8,21 @@ import (
 
 const (
 	ScreenWidth  = 800
-	ScreenHeight = 600
+	ScreenHeight = 800
+	TargetFPS    = 60
+	WindowTitle  = "Go System Monitor"
 )
 
 func main() {
-
 	monitor := metrics.NewMonitor()
 	monitor.Start()
 	defer monitor.Stop()
 
-	rl.InitWindow(ScreenWidth, ScreenHeight, "Go System Monitor")
+	rl.InitWindow(ScreenWidth, ScreenHeight, WindowTitle)
 	defer rl.CloseWindow()
-	rl.SetTargetFPS(60)
+	rl.SetTargetFPS(TargetFPS)
 
 	for !rl.WindowShouldClose() {
-		ui.Render(monitor.GetMetrics())
+		ui.RenderSystemMetrics(monitor.GetMetrics())
 	}
 }

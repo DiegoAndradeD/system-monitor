@@ -8,7 +8,10 @@ import (
 )
 
 type DiskMetrics struct {
-	Usage float64
+	Usage          float64
+	TotalUsed      float64
+	TotalAvailable float64
+	TotalSize      float64
 }
 
 var nonPhysicalPartitionsTypes = []string{"tmpfs", "overlay", "proc", "sysfs", "cgroup", "squashfs", "devtmpfs", "vfat"}
@@ -17,11 +20,11 @@ func GetDiskMetrics() DiskMetrics {
 	partitions, err := disk.Partitions(false)
 	if err != nil {
 		log.Printf("Error getting disk partitions: %v", err)
-		return DiskMetrics{Usage: 0}
+		return DiskMetrics{}
 	}
 
-	var totalUsed uint64 = 0
-	var totalSize uint64 = 0
+	var totalUsed float64 = 0
+	var totalSize float64 = 0
 
 	for _, p := range partitions {
 		if slices.Contains(nonPhysicalPartitionsTypes, p.Fstype) {
@@ -34,13 +37,20 @@ func GetDiskMetrics() DiskMetrics {
 			continue
 		}
 
-		totalUsed += usage.Used
-		totalSize += usage.Total
+		totalUsed += float64(usage.Used)
+		totalSize += float64(usage.Total)
 	}
 
 	if totalSize == 0 {
-		return DiskMetrics{Usage: 0}
+		return DiskMetrics{}
 	}
 
-	return DiskMetrics{Usage: (float64(totalUsed) / float64(totalSize)) * 100}
+	totalAvailable := totalSize - totalUsed
+
+	return DiskMetrics{
+		Usage:          (totalUsed / totalSize) * 100,
+		TotalUsed:      totalUsed,
+		TotalAvailable: totalAvailable,
+		TotalSize:      totalSize,
+	}
 }

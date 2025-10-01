@@ -7,23 +7,26 @@ import (
 )
 
 type SystemMetrics struct {
-	CPUMetrics    CPUMetrics
-	MemoryUsage   MemoryMetrics
-	MainDiskUsage DiskMetrics
+	CPUMetrics     CPUMetrics
+	MemoryMetrics  MemoryMetrics
+	DiskMetrics    DiskMetrics
+	NetworkMetrics NetworkMetrics
 }
 
 type Monitor struct {
-	metrics SystemMetrics
-	mu      sync.RWMutex
-	ctx     context.Context
-	cancel  context.CancelFunc
+	metrics          SystemMetrics
+	networkCollector *NetworkCollector
+	mu               sync.RWMutex
+	ctx              context.Context
+	cancel           context.CancelFunc
 }
 
 func NewMonitor() *Monitor {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Monitor{
-		ctx:    ctx,
-		cancel: cancel,
+		ctx:              ctx,
+		cancel:           cancel,
+		networkCollector: NewNetworkCollector(),
 	}
 }
 
@@ -36,7 +39,9 @@ func (m *Monitor) GetMetrics() SystemMetrics {
 func (m *Monitor) Start() {
 	go collectorRoutine(m, GetCPUMetrics, m.updateCPUMetrics)
 	go collectorRoutine(m, GetMemoryMetrics, m.updateMemoryUsage)
-	go collectorRoutine(m, GetDiskMetrics, m.updateMainDiskUsage)
+	go collectorRoutine(m, GetDiskMetrics, m.updateMainDiskMetrics)
+	go collectorRoutine(m, m.networkCollector.GetNetworkMetrics, m.updateNetworkMetrics)
+
 }
 func (m *Monitor) Stop() {
 	m.cancel()
@@ -67,11 +72,24 @@ func (m *Monitor) updateCPUMetrics(metrics CPUMetrics) {
 func (m *Monitor) updateMemoryUsage(metrics MemoryMetrics) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.metrics.MemoryUsage = MemoryMetrics{Usage: metrics.Usage}
+	m.metrics.MemoryMetrics = MemoryMetrics{Usage: metrics.Usage, TotalUsed: metrics.TotalUsed,
+		TotalAvailable: metrics.TotalAvailable, SwapMemoryTotal: metrics.SwapMemoryTotal,
+		SwapMemoryUsed: metrics.SwapMemoryUsed, SwapMemoryUsedPercent: metrics.SwapMemoryUsedPercent}
 }
 
-func (m *Monitor) updateMainDiskUsage(metrics DiskMetrics) {
+func (m *Monitor) updateMainDiskMetrics(metrics DiskMetrics) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.metrics.MainDiskUsage = DiskMetrics{Usage: metrics.Usage}
+	m.metrics.DiskMetrics = DiskMetrics{
+		Usage:          metrics.Usage,
+		TotalUsed:      metrics.TotalUsed,
+		TotalAvailable: metrics.TotalAvailable,
+		TotalSize:      metrics.TotalSize,
+	}
+}
+
+func (m *Monitor) updateNetworkMetrics(metrics NetworkMetrics) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.metrics.NetworkMetrics = metrics
 }
