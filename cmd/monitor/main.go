@@ -8,7 +8,7 @@ import (
 
 const (
 	ScreenWidth  = 800
-	ScreenHeight = 800
+	ScreenHeight = 700
 	TargetFPS    = 60
 	WindowTitle  = "Go System Monitor"
 )

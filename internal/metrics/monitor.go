@@ -6,11 +6,17 @@ import (
 	"time"
 )
 
+const (
+	networkHistorySize = 60
+)
+
 type SystemMetrics struct {
-	CPUMetrics     CPUMetrics
-	MemoryMetrics  MemoryMetrics
-	DiskMetrics    DiskMetrics
-	NetworkMetrics NetworkMetrics
+	CPUMetrics      CPUMetrics
+	MemoryMetrics   MemoryMetrics
+	DiskMetrics     DiskMetrics
+	NetworkMetrics  NetworkMetrics
+	UploadHistory   []float64
+	DownloadHistory []float64
 }
 
 type Monitor struct {
@@ -27,6 +33,10 @@ func NewMonitor() *Monitor {
 		ctx:              ctx,
 		cancel:           cancel,
 		networkCollector: NewNetworkCollector(),
+		metrics: SystemMetrics{
+			UploadHistory:   make([]float64, 0, networkHistorySize),
+			DownloadHistory: make([]float64, 0, networkHistorySize),
+		},
 	}
 }
 
@@ -92,4 +102,14 @@ func (m *Monitor) updateNetworkMetrics(metrics NetworkMetrics) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.metrics.NetworkMetrics = metrics
+
+	m.metrics.UploadHistory = append(m.metrics.UploadHistory, metrics.UploadSpeedKBps)
+	if len(m.metrics.UploadHistory) > networkHistorySize {
+		m.metrics.UploadHistory = m.metrics.UploadHistory[1:]
+	}
+
+	m.metrics.DownloadHistory = append(m.metrics.DownloadHistory, metrics.DownloadSpeedKBps)
+	if len(m.metrics.DownloadHistory) > networkHistorySize {
+		m.metrics.DownloadHistory = m.metrics.DownloadHistory[1:]
+	}
 }

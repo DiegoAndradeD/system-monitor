@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"fmt"
+
 	"github.com/DiegoAndradeD/system-monitor/internal/metrics"
 	"github.com/DiegoAndradeD/system-monitor/utils"
 	rl "github.com/gen2brain/raylib-go/raylib"
@@ -10,22 +12,22 @@ const (
 	ScreenPadding = 10
 	TitleFontSize = 40
 	TitleOffsetY  = 10
-	MetricsStartY = 80
+	MetricsStartY = 50
 
 	SectionRectWidthRatio = 0.9
-	SectionPadding        = 20
-	SectionTitleFontSize  = 25
-	SectionTitleOffsetY   = 20
-	SectionMetricsStartY  = 60
+	SectionPadding        = 15
+	SectionTitleFontSize  = 22
+	SectionTitleOffsetY   = 10
+	SectionMetricsStartY  = 45
 
-	MetricFontSize   = 20
-	MetricLineHeight = 30
+	MetricFontSize   = 18
+	MetricLineHeight = 25
 	MetricLabelWidth = 125
 	MetricValueWidth = 400
 
 	BarCount   = 50
 	BarWidth   = 8
-	BarHeight  = 16
+	BarHeight  = 14
 	BarGap     = 2
 	BarOffsetX = 300
 )
@@ -41,9 +43,11 @@ type MetricDisplay struct {
 }
 
 type MetricsSection struct {
-	Title   string
-	Color   rl.Color
-	Metrics []MetricDisplay
+	Title           string
+	Color           rl.Color
+	Metrics         []MetricDisplay
+	UploadHistory   []float64
+	DownloadHistory []float64
 }
 
 func Render(sections []MetricsSection) {
@@ -51,6 +55,13 @@ func Render(sections []MetricsSection) {
 	defer rl.EndDrawing()
 
 	rl.ClearBackground(rl.Black)
+
+	rl.DrawRectangleGradientV(
+		0, 0,
+		int32(rl.GetScreenWidth()), 700,
+		rl.NewColor(20, 20, 40, 100),
+		rl.NewColor(10, 10, 20, 120),
+	)
 
 	yOffset := MetricsStartY
 	for _, section := range sections {
@@ -104,16 +115,16 @@ func CreateDiskSection(diskMetrics metrics.DiskMetrics) MetricsSection {
 	}
 }
 
-func CreateNetworkSection(netMetrics metrics.NetworkMetrics) MetricsSection {
+func CreateNetworkSection(netMetrics metrics.SystemMetrics) MetricsSection {
 	return MetricsSection{
 		Title: "Network",
 		Color: rl.Violet,
 		Metrics: []MetricDisplay{
-			{Label: "Upload", Value: utils.SingleValue(netMetrics.UploadSpeedKBps), Unit: "KB/s"},
-			{Label: "Download", Value: utils.SingleValue(netMetrics.DownloadSpeedKBps), Unit: "KB/s"},
-			{Label: "Total Sent", Value: utils.SingleValue(netMetrics.TotalSentGB), Unit: "GB"},
-			{Label: "Total Recv", Value: utils.SingleValue(netMetrics.TotalRecvGB), Unit: "GB"},
+			{Label: "Upload", Value: utils.SingleValue(netMetrics.NetworkMetrics.UploadSpeedKBps), Unit: "KB/s"},
+			{Label: "Download", Value: utils.SingleValue(netMetrics.NetworkMetrics.DownloadSpeedKBps), Unit: "KB/s"},
 		},
+		UploadHistory:   netMetrics.UploadHistory,
+		DownloadHistory: netMetrics.DownloadHistory,
 	}
 }
 
@@ -136,13 +147,21 @@ func drawMetricsSection(section MetricsSection, yPosition float32) float32 {
 	rectWidth := screenW * SectionRectWidthRatio
 	rectX := (screenW - rectWidth) / 2
 
-	sectionHeight := SectionMetricsStartY + float32(len(section.Metrics))*MetricLineHeight + SectionPadding
+	var graphHeight float32 = 40
+	var graphPadding float32 = 5
+	metricsTextYOffset := SectionMetricsStartY
+
+	totalHeight := float32(len(section.Metrics))*MetricLineHeight + float32(metricsTextYOffset) + float32(SectionPadding)
+
+	if section.Title == "Network" {
+		totalHeight += (graphHeight * 2) + graphPadding
+	}
 
 	rl.DrawRectangleLines(
 		int32(rectX),
 		int32(yPosition),
 		int32(rectWidth),
-		int32(sectionHeight),
+		int32(totalHeight),
 		rl.Gray,
 	)
 
@@ -154,30 +173,38 @@ func drawMetricsSection(section MetricsSection, yPosition float32) float32 {
 		rl.White,
 	)
 
-	currentY := yPosition + SectionMetricsStartY
+	currentY := yPosition
+
+	if section.Title == "Network" {
+		graphY := yPosition + float32(metricsTextYOffset)
+		graphWidth := rectWidth - float32(SectionPadding*2)
+		drawMetricLineGraph(section.UploadHistory, rectX+float32(SectionPadding), graphY, graphWidth, graphHeight, section.Color)
+		graphY += graphHeight + graphPadding
+		drawMetricLineGraph(section.DownloadHistory, rectX+float32(SectionPadding), graphY, graphWidth, graphHeight, rl.SkyBlue)
+		currentY += (graphHeight * 2.2) + graphPadding
+	}
+
+	currentY += float32(metricsTextYOffset)
+
 	for _, metric := range section.Metrics {
 		drawMetric(metric, section.Color, rectX, currentY)
 		currentY += MetricLineHeight
 	}
 
-	return sectionHeight
+	return totalHeight
 }
 
 func drawMetric(metric MetricDisplay, sectionColor rl.Color, rectX, y float32) {
 	baseX := int32(rectX) + SectionPadding
+	labelX := baseX
+	valueX := baseX + MetricLabelWidth
 	var valuePadding int32 = 0
 
 	if percentageValue, ok := metric.Value.(utils.PercentageValue); ok {
-		drawPercentageBars(float64(percentageValue), rectX+SectionPadding, y, sectionColor)
-		valuePadding = 100
-	}
-
-	labelX := baseX
-	valueX := baseX + MetricLabelWidth
-
-	if _, ok := metric.Value.(utils.PercentageValue); ok {
+		drawPercentageBars(float64(percentageValue), float32(baseX), y, sectionColor)
 		labelX += BarOffsetX
 		valueX += BarOffsetX
+		valuePadding = 100
 	}
 
 	if metric.Label != "" {
@@ -188,12 +215,59 @@ func drawMetric(metric MetricDisplay, sectionColor rl.Color, rectX, y float32) {
 	rl.DrawText(valueText, valueX+valuePadding, int32(y), MetricFontSize, rl.LightGray)
 }
 
+func drawMetricLineGraph(history []float64, x, y, width, height float32, color rl.Color) {
+	if len(history) < 2 {
+		return
+	}
+
+	maxValue := 0.0
+	for _, v := range history {
+		if v > maxValue {
+			maxValue = v
+		}
+	}
+	if maxValue < 10 {
+		maxValue = 10
+	}
+
+	rl.DrawRectangleLines(int32(x), int32(y), int32(width), int32(height), rl.DarkGray)
+
+	stepX := width / float32(len(history)-1)
+	for i := 1; i < len(history); i++ {
+		x1 := x + float32(i-1)*stepX
+		y1 := y + height - (float32(history[i-1])/float32(maxValue))*height
+
+		x2 := x + float32(i)*stepX
+		y2 := y + height - (float32(history[i])/float32(maxValue))*height
+
+		if y1 < y {
+			y1 = y
+		}
+		if y2 < y {
+			y2 = y
+		}
+
+		rl.DrawLineEx(rl.NewVector2(x1, y1), rl.NewVector2(x2, y2), 2.0, color)
+	}
+
+	currentValueText := utils.SingleValue(history[len(history)-1]).Format("KB/s")
+	peakValueText := fmt.Sprintf("Peak: %.1f KB/s", maxValue)
+	rl.DrawText(currentValueText, int32(x)+5, int32(y)+5, 12, rl.White)
+	rl.DrawText(
+		peakValueText,
+		int32(x+width-float32(rl.MeasureText(peakValueText, 12)))-5,
+		int32(y)+5,
+		12,
+		rl.LightGray,
+	)
+}
+
 func RenderSystemMetrics(m metrics.SystemMetrics) {
 	sections := []MetricsSection{
 		CreateCPUSection(m.CPUMetrics),
 		CreateMemorySection(m.MemoryMetrics),
 		CreateDiskSection(m.DiskMetrics),
-		CreateNetworkSection(m.NetworkMetrics),
+		CreateNetworkSection(m),
 	}
 	Render(sections)
 }
